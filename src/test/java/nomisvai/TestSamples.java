@@ -100,6 +100,7 @@ public class TestSamples {
     private static KmsVaultClient kmsVaultClient = null;
     private static SecretsClient secretsClient = null;
     private static VaultsClient vaultsClient = null;
+    private static boolean mtlsConnectionRequired = true;
 
     private static AutonomousDatabase autonomousDatabase;
     private static String ordsEndpoint = null;
@@ -120,6 +121,16 @@ public class TestSamples {
             testStatement = properties.getProperty("testStatement");
             walletSecretName = properties.getProperty("walletSecretName");
             passwordSecretName = properties.getProperty("passwordSecretName");
+            try {
+                mtlsConnectionRequired =
+                        Boolean.parseBoolean(properties.getProperty("mtlsConnectionRequired"));
+            } catch (RuntimeException e) {
+                log.info(
+                        "Could not parse property mtlsConnectionRequired, setting to true. {}",
+                        "" + e);
+                mtlsConnectionRequired = true;
+            }
+
             databaseClient =
                     DatabaseClient.builder()
                             .build(new ConfigFileAuthenticationDetailsProvider(ociProfile));
@@ -461,23 +472,52 @@ public class TestSamples {
                                                 .build())
                                 .build());
 
+        // If mtlsConnectionRequired is false, use the non mtls connection string and set the
+        // keystore to null
+        if (!mtlsConnectionRequired && !autonomousDatabase.getIsMtlsConnectionRequired()) {
+            log.info("Using non mtls connection string.");
+            connectionString =
+                    autonomousDatabase.getConnectionStrings().getProfiles().stream()
+                            .filter(
+                                    p ->
+                                            p.getTlsAuthentication()
+                                                            .equals(
+                                                                    DatabaseConnectionStringProfile
+                                                                            .TlsAuthentication
+                                                                            .Server)
+                                                    && p.getConsumerGroup()
+                                                            .equals(
+                                                                    DatabaseConnectionStringProfile
+                                                                            .ConsumerGroup.Low))
+                            .collect(Collectors.toList())
+                            .iterator()
+                            .next()
+                            .getValue();
+            keyStores = null;
+        }
+
+        CreateDatabaseToolsConnectionOracleDatabaseDetails.Builder
+                createDatabaseToolsConnectionOracleDatabaseDetailsBuilder =
+                        CreateDatabaseToolsConnectionOracleDatabaseDetails.builder()
+                                .compartmentId(defaultCompartmentId)
+                                .connectionString(connectionString)
+                                .displayName("test-sample-connection-" + System.currentTimeMillis())
+                                .userName(dbUser)
+                                .userPassword(
+                                        DatabaseToolsUserPasswordSecretIdDetails.builder()
+                                                .secretId(dbPasswordSecretId)
+                                                .build())
+                                .keyStores(keyStores);
+
+        if (dbtoolsPrivateEndpointId != null) {
+            createDatabaseToolsConnectionOracleDatabaseDetailsBuilder.privateEndpointId(
+                    dbtoolsPrivateEndpointId);
+        }
+
         createDatabaseToolsConnectionRequest =
                 CreateDatabaseToolsConnectionRequest.builder()
                         .createDatabaseToolsConnectionDetails(
-                                CreateDatabaseToolsConnectionOracleDatabaseDetails.builder()
-                                        .compartmentId(defaultCompartmentId)
-                                        .connectionString(connectionString)
-                                        .privateEndpointId(dbtoolsPrivateEndpointId)
-                                        .displayName(
-                                                "test-sample-connection-"
-                                                        + System.currentTimeMillis())
-                                        .userName(dbUser)
-                                        .userPassword(
-                                                DatabaseToolsUserPasswordSecretIdDetails.builder()
-                                                        .secretId(dbPasswordSecretId)
-                                                        .build())
-                                        .keyStores(keyStores)
-                                        .build())
+                                createDatabaseToolsConnectionOracleDatabaseDetailsBuilder.build())
                         .build();
         CreateDatabaseToolsConnectionResponse createDatabaseToolsConnectionResponse =
                 databaseToolsClient.createDatabaseToolsConnection(
@@ -558,5 +598,12 @@ public class TestSamples {
                         .post(body);
         Assertions.assertEquals(200, response.getStatus());
         log.info("Response Body {}", response.readEntity(String.class));
+        log.info(
+                "\n"
+                        + " ___  _  _  __  __  ___  ___  ___  _ \n"
+                        + "/ __)( )( )/ _)/ _)(  _)/ __)/ __)/ \\\n"
+                        + "\\__ \\ )()(( (_( (_  ) _)\\__ \\\\__ \\\\_/\n"
+                        + "(___/ \\__/ \\__)\\__)(___)(___/(___/(_)\n"
+                        + "\n");
     }
 }
