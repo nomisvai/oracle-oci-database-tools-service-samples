@@ -503,16 +503,15 @@ public class TestSamples {
                                 .connectionString(connectionString)
                                 .displayName("test-sample-connection-" + System.currentTimeMillis())
                                 .userName(dbUser)
+                                .privateEndpointId(
+                                        Strings.isNullOrEmpty(dbtoolsPrivateEndpointId)
+                                                ? null
+                                                : dbtoolsPrivateEndpointId)
                                 .userPassword(
                                         DatabaseToolsUserPasswordSecretIdDetails.builder()
                                                 .secretId(dbPasswordSecretId)
                                                 .build())
                                 .keyStores(keyStores);
-
-        if (dbtoolsPrivateEndpointId != null) {
-            createDatabaseToolsConnectionOracleDatabaseDetailsBuilder.privateEndpointId(
-                    dbtoolsPrivateEndpointId);
-        }
 
         createDatabaseToolsConnectionRequest =
                 CreateDatabaseToolsConnectionRequest.builder()
@@ -522,6 +521,7 @@ public class TestSamples {
         CreateDatabaseToolsConnectionResponse createDatabaseToolsConnectionResponse =
                 databaseToolsClient.createDatabaseToolsConnection(
                         createDatabaseToolsConnectionRequest);
+
         String connectionId =
                 createDatabaseToolsConnectionResponse.getDatabaseToolsConnection().getId();
         GetDatabaseToolsConnectionResponse getConnectionResponse = null;
